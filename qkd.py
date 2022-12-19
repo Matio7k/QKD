@@ -1,8 +1,10 @@
 #!/usr/bin/python
+import numpy as np
 from numpy import matrix
 from math import pow, sqrt
 from random import randint
 import sys, argparse
+
 
 class qubit():
 	def __init__(self,initial_state):
@@ -12,15 +14,19 @@ class qubit():
 			self.__state = matrix([[1],[0]])
 		self.__measured = False
 		self.__H = (1/sqrt(2))*matrix([[1,1],[1,-1]])
+		self.__H2 = (1/sqrt(2))*matrix([[1,1],[-1,1]])
 		self.__X = matrix([[0,1],[1,0]])
+		self.__Z = matrix([[1, 0], [0, -1]])
+	def state(self):
+		return self.__state
 	def show(self):
 		aux = ""
-		if round(matrix([1,0])*self.__state,2):
-			aux += "{0}|0>".format(str(round(matrix([1,0])*self.__state,2)) if round(matrix([1,0])*self.__state,2) != 1.0 else '')
-		if round(matrix([0,1])*self.__state,2):
+		if np.round_(matrix([1,0])*self.__state,2):
+			aux += "{0}|0>".format(str(np.round_(matrix([1,0])*self.__state,2)) if np.round_(matrix([1,0])*self.__state,2) != 1.0 else '')
+		if np.round_(matrix([0,1])*self.__state,2):
 			if aux:
 				aux += " + "
-			aux += "{0}|1>".format(str(round(matrix([0,1])*self.__state,2)) if round(matrix([0,1])*self.__state,2) != 1.0 else '')
+			aux += "{0}|1>".format(str(np.round_(matrix([0,1])*self.__state,2)) if np.round_(matrix([0,1])*self.__state,2) != 1.0 else '')
 		return aux
 	def measure(self):
 		if self.__measured:
@@ -36,10 +42,18 @@ class qubit():
 		if self.__measured:
 			raise Exception("Qubit already measured!")
 		self.__state = self.__H*self.__state
+	def hadamard2(self):
+		if self.__measured:
+			raise Exception("Qubit already measured!")
+		self.__state = self.__H2*self.__state
 	def X(self):
 		if self.__measured:
 			raise Exception("Qubit already measured!")
 		self.__state = self.__X*self.__state
+	def Z(self):
+		if self.__measured:
+			raise Exception("Qubit already measured!")
+		self.__state = self.__Z*self.__state
 
 class quantum_user():
 	def __init__(self,name):
@@ -86,12 +100,26 @@ def generate_random_bits(N):
 	for i in range(N):
 		aux.append(randint(0,1))
 	return aux
-
-def QKD(N,verbose=False,eve_present=False):
+def BSC(qubits,error_rate):
+	H = (1/sqrt(2))*matrix([[1,1],[1,-1]])
+	for i in range(len(qubits)):
+		if np.random.uniform(0,1) < error_rate:
+			state = qubits[i].state() # state in numpy matrix
+			if (state == matrix([[1],[0]])).all():
+				qubits[i].X()
+			elif (state == matrix([[0],[1]])).all():
+				qubits[i].X()
+			elif (state == H*matrix([[1],[0]])).all():
+				qubits[i].Z()
+			elif (state == H*matrix([[0],[1]])).all():
+				qubits[i].Z()
+	return qubits
+def QKD(N,bsc_error,verbose=False,eve_present=False):
 	alice_basis = generate_random_bits(N)
 	alice_bits = generate_random_bits(N)
 	alice = quantum_user("Alice")
 	alice_qubits = alice.send(data=alice_bits,basis=alice_basis)
+	qubits_after_BSC = BSC(alice_qubits,bsc_error)
 	if eve_present:
 		eve_basis = generate_random_bits(N)
 		eve = quantum_user("Eve")
@@ -99,7 +127,7 @@ def QKD(N,verbose=False,eve_present=False):
 		alice_qubits = eve.send(data=eve_bits,basis=eve_basis)
 	bob_basis = generate_random_bits(N)
 	bob = quantum_user("Bob")
-	bob_bits = bob.receive(data=alice_qubits,basis=bob_basis)
+	bob_bits = bob.receive(data=qubits_after_BSC,basis=bob_basis)
 	alice_key = list()
 	bob_key = list()
 	for i in range(N):
@@ -109,51 +137,53 @@ def QKD(N,verbose=False,eve_present=False):
 	if alice_key != bob_key:
 		key = False
 		length = None
-		print "Encription key mismatch, eve is present."
+		#print("Encription key mismatch, eve is present.")
 	else:
 		key = True
 		length = len(bob_key)
-		print "Successfully exchanged key!"
-		print "Key Length: " + str(length)
+		#print("Successfully exchanged key!")
+		#print("Key Length: " + str(length))
+		#print(alice_key, bob_key)
 	if verbose:
-		print "Alice generates {0} random basis.".format(str(N))
-		raw_input()
-		print ''.join(str(e) for e in alice_basis)
-		raw_input()
-		print "Alice generates {0} random bits.".format(str(N))
-		raw_input()
-		print ''.join(str(e) for e in alice_bits)
-		raw_input()
-		print "Alice sends to Bob {0} encoded Qubits.".format(str(N))
-		raw_input()
+		print("Alice generates {0} random basis.".format(str(N)))
+		input()
+		print(''.join(str(e) for e in alice_basis))
+		input()
+		print("Alice generates {0} random bits.".format(str(N)))
+		input()
+		print(''.join(str(e) for e in alice_bits))
+		input()
+		print("Alice sends to Bob {0} encoded Qubits.".format(str(N)))
+		input()
 		aux = ""
 		for q in alice_qubits:
 			aux += q.show() + "   "
-		print aux
-		raw_input()
+		print(aux)
+		input()
 		if eve_present:
-			print "Eve intercepts Qubits!"
-			raw_input()
-			print ''.join(str(e) for e in eve_basis)
-			raw_input()
-			print "Eve's bits."
-			raw_input()
-			print ''.join(str(e) for e in eve_bits)
-			raw_input()
-		print "Bob generates {0} random basis.".format(str(N))
-		raw_input()
-		print ''.join(str(e) for e in bob_basis)
-		raw_input()
-		print "Bob receives and decodes Alice's Qubits."
-		raw_input()
-		print ''.join(str(e) for e in bob_bits)
-		raw_input()
-		print "Alice and Bob interchange basis through Internet and compare their basis."
-		raw_input()
-	#print "Key obtained: " + ''.join(str(e) for e in bob_bits)
-	#print "Efficiency: {0}%".format(str(round((float(len(key))/float(len(alice_bits)))*100.0)))
-	return key
+			print("Eve intercepts Qubits!")
+			input()
+			print(''.join(str(e) for e in eve_basis))
+			input()
+			print("Eve's bits.")
+			input()
+			print(''.join(str(e) for e in eve_bits))
+			input()
+		print("Bob generates {0} random basis.".format(str(N)))
+		input()
+		print(''.join(str(e) for e in bob_basis))
+		input()
+		print("Bob receives and decodes Alice's Qubits.")
+		input()
+		print(''.join(str(e) for e in bob_bits))
+		input()
+		print("Alice and Bob interchange basis through Internet and compare their basis.")
+		input()
+	#print("Key obtained: " + ''.join(str(e) for e in bob_bits))
+	#print("Efficiency: {0}%".format(str(round((float(len(key))/float(len(alice_bits)))*100.0))))
+	return alice_key, bob_key
 
+'''
 if __name__ == "__main__":
 	parser = argparse.ArgumentParser(description='BB84 QKD demonstration with Python.')
 	requiredNamed = parser.add_argument_group('Required arguments')
@@ -170,13 +200,19 @@ if __name__ == "__main__":
 		N = int(args.iterate)
 	else:
 		N = 1
-	for i in range(N):
-		print "############# {0} #############".format(str(i))
-		ret.append(QKD(int(args.qubits),verbose=args.verbose,eve_present=args.eve))
-		print "###############################".format(str(i))
-	print "############################"
-	print "############################"
+	ret = list()
+	N=1
+	bsc_error = 0.3
+	for i in tqdm(range(N)):
+		#print("############# {0} #############".format(str(i)))
+		#ret.append(QKD(int(args.qubits),verbose=args.verbose,eve_present=args.eve))
+		#ret.append(QKD(20,bsc_error, verbose=False, eve_present=False))
+		QKD(20, bsc_error, verbose=False, eve_present=False)
+		#print("###############################".format(str(i)))
+	print("############################")
+	print("############################")
 	t = "{0:.2f}".format(float(ret.count(True))*100.0/float(N))
 	u = "{0:.2f}".format(float(ret.count(False))*100.0/float(N))
-	print "True: {0} <{1}%>".format(ret.count(True),str(t))
-	print "False: {0} <{1}%>".format(ret.count(False),str(u))
+	print("True: {0} <{1}%>".format(ret.count(True),str(t)))
+	print("False: {0} <{1}%>".format(ret.count(False),str(u)))
+'''
